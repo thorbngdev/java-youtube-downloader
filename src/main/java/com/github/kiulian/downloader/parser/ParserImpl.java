@@ -29,6 +29,7 @@ import com.github.kiulian.downloader.model.videos.formats.*;
 
 public class ParserImpl implements Parser {
     private static final String ANDROID_APIKEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8";
+    private static final int CLIP_THRESHOLD = 30;
 
     private final Config config;
     private final Downloader downloader;
@@ -44,7 +45,7 @@ public class ParserImpl implements Parser {
 
     @Override
     public Response<VideoInfo> parseVideo(RequestVideoInfo request) {
-        if (request.isAsync()) {
+        if (Optional.of(request.isAsync()).orElse(false)) {
             ExecutorService executorService = config.getExecutorService();
             Future<VideoInfo> result = executorService.submit(() -> parseVideo(request.getVideoId(), request.getCallback()));
             return ResponseImpl.fromFuture(result);
@@ -59,8 +60,11 @@ public class ParserImpl implements Parser {
 
     private VideoInfo parseVideo(String videoId, YoutubeCallback<VideoInfo> callback) throws YoutubeException {
         // try to spoof android
-        // workaround for issue https://github.com/sealedtx/java-youtube-downloader/issues/97
-        VideoInfo videoInfo = parseVideoAndroid(videoId);
+        // workaround for issue https://github.com/sealedtx/java-youtube-downloader/issues/97\
+        VideoInfo videoInfo = null;
+        if (videoId.length() < CLIP_THRESHOLD) {
+            videoInfo = parseVideoAndroid(videoId);
+        }
         if (videoInfo == null) {
             videoInfo = parseVideoWeb(videoId, callback);
         }
@@ -116,7 +120,10 @@ public class ParserImpl implements Parser {
     }
 
     private VideoInfo parseVideoWeb(String videoId, YoutubeCallback<VideoInfo> callback) throws YoutubeException {
-        String htmlUrl = "https://www.youtube.com/watch?v=" + videoId;
+
+        String htmlUrl = videoId.length() > CLIP_THRESHOLD
+                ? "https://www.youtube.com/clip/" + videoId
+                : "https://www.youtube.com/watch?v=" + videoId;
 
         Response<String> response = downloader.downloadWebpage(new RequestWebpage(htmlUrl));
         if (!response.ok()) {
